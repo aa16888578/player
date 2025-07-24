@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>自動化 Twitch 直播播放器</title>
+  <title>Twitch 直播播放器</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -33,6 +33,7 @@
       background: #222;
       padding: 10px;
       display: flex;
+      justify-content: flex-end;
       align-items: center;
       gap: 10px;
       font-size: 0.95em;
@@ -78,7 +79,7 @@
       display: none;
     }
 
-    button, select {
+    button {
       padding: 6px 10px;
       font-size: 1em;
       border-radius: 4px;
@@ -89,16 +90,13 @@
 </head>
 <body>
   <div id="container">
-    <!-- 控制列 -->
+    <!-- 控制列（保留聊天開關與主題切換） -->
     <div id="controls">
-      頻道：
-      <select id="channelSelect"><option>載入中…</option></select>
       <button id="toggleChatBtn">👁️ 收起聊天室</button>
       <button id="themeBtn">🌙 啟用亮色主題</button>
-      <button id="reloadBtn">🔁 重新載入</button>
     </div>
 
-    <!-- 主內容：直播 + 聊天室 -->
+    <!-- 主內容區 -->
     <div id="main-content">
       <div id="video"></div>
       <div id="chat-wrapper">
@@ -109,22 +107,17 @@
   </div>
 
   <script>
-    const PARENT = "miniapp-ten-nu.vercel.app"; // ⚠️ 改為你的 Vercel 網域
-    let currentChannel = "";
+    const PARENT = "miniapp-ten-nu.vercel.app"; // ⚠️ 你的 Vercel 網域
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentChannel = urlParams.get("channel") || "nasa";  // 預設頻道
+
     let themeMode = 'dark';
-    let embedPlayer, embedChat;
 
-    // 假設 channel 清單來自你 CDN / GitHub Pages / json 資料
-    const CHANNEL_JSON_URL = "https://yourdomain.com/channels.json"; // 👉 改成實際連接
-
-    // 初始化播放器和聊天室
     function initPlayer(channel) {
-      currentChannel = channel;
-
       document.getElementById("video").innerHTML = "";
       document.getElementById("chat").innerHTML = "";
 
-      embedPlayer = new Twitch.Embed("video", {
+      new Twitch.Embed("video", {
         width: "100%",
         height: "100%",
         channel: channel,
@@ -142,61 +135,29 @@
       document.getElementById("chat").appendChild(chatFrame);
     }
 
-    // 載入頻道清單
-    async function loadChannelList() {
-      const sel = document.getElementById("channelSelect");
-      sel.innerHTML = "";
-
-      try {
-        const res = await fetch(CHANNEL_JSON_URL);
-        const list = await res.json();
-        list.forEach(({ id, name }) => {
-          const opt = document.createElement("option");
-          opt.value = id;
-          opt.textContent = name;
-          sel.appendChild(opt);
-        });
-
-        // 載入第一個頻道
-        initPlayer(sel.value);
-      } catch (err) {
-        sel.innerHTML = "<option value='nasa'>⚠️ 載入失敗</option>";
-        initPlayer("nasa");
-      }
-    }
-
-    // 事件處理
-    document.getElementById("reloadBtn").onclick = () => {
-      initPlayer(document.getElementById("channelSelect").value);
-    };
-
     document.getElementById("toggleChatBtn").onclick = () => {
       const chatWrap = document.getElementById("chat-wrapper");
+      const btn = document.getElementById("toggleChatBtn");
       if (chatWrap.classList.contains("hidden")) {
         chatWrap.classList.remove("hidden");
-        document.getElementById("toggleChatBtn").innerText = "👁️ 收起聊天室";
+        btn.innerText = "👁️ 收起聊天室";
       } else {
         chatWrap.classList.add("hidden");
-        document.getElementById("toggleChatBtn").innerText = "👁️ 展開聊天室";
+        btn.innerText = "👁️ 展開聊天室";
       }
     };
 
     document.getElementById("themeBtn").onclick = () => {
-      if (themeMode === 'dark') {
-        document.body.style.background = "#f8f8f8";
-        document.body.style.color = "#111";
-        themeMode = 'light';
-        document.getElementById("themeBtn").innerText = "🌙 啟用暗黑主題";
-      } else {
-        document.body.style.background = "#000";
-        document.body.style.color = "#fff";
-        themeMode = 'dark';
-        document.getElementById("themeBtn").innerText = "☀️ 啟用亮色主題";
-      }
+      const isDark = themeMode === 'dark';
+      document.body.style.background = isDark ? "#f8f8f8" : "#000";
+      document.body.style.color = isDark ? "#111" : "#fff";
+      document.getElementById("themeBtn").innerText = isDark ? "☀️ 啟用暗黑主題" : "🌙 啟用亮色主題";
+      themeMode = isDark ? 'light' : 'dark';
     };
 
-    // 初始化
-    window.addEventListener("DOMContentLoaded", loadChannelList);
+    window.addEventListener("DOMContentLoaded", () => {
+      initPlayer(currentChannel);
+    });
   </script>
 </body>
 </html>
