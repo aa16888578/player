@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>Twitch 直播播放器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* 全螢幕視覺調整，無邊距，黑底 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    iframe {
+      border: none;
+      width: 100%;
+      height: 100%;
+      max-width: 100vw;
+      max-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    src="https://player.twitch.tv/?channel=e7_69tg&parent=miniapp-jhal.vercel.app"
+    allowfullscreen
+    scrolling="no"
+    frameborder="0"
+  ></iframe>
+</body>
+</html>
