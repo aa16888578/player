@@ -1,86 +1,202 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>多頻道 Twitch 直播與聊天室</title>
+  <meta charset="UTF-8" />
+  <title>自動化 Twitch 直播播放器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body,html { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:sans-serif; }
-    #controls { padding:10px; background:#111; display:flex; align-items:center; gap:10px; }
-    select, button { padding:8px; font-size:1em; }
-    #container { display:flex; height:calc(100% - 50px); }
-    #video, #chat { flex:1; border:none; }
-    #video { border-right:2px solid #222; }
+    :root {
+      --bg-dark: #000;
+      --bg-light: #f8f8f8;
+      --text-dark: #fff;
+      --text-light: #111;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      overflow: hidden;
+      font-family: sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+      transition: all 0.2s ease-in-out;
+    }
+
+    #container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #controls {
+      background: #222;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.95em;
+    }
+
+    #main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #video {
+      flex: 2;
+    }
+
+    #chat-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #chat-tabs {
+      background: #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 10px;
+      font-size: 0.85em;
+    }
+
+    #chat {
+      flex: 1;
+      background: #111;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    button, select {
+      padding: 6px 10px;
+      font-size: 1em;
+      border-radius: 4px;
+      border: none;
+    }
   </style>
-  <!-- 載入 Twitch Embed JS -->
   <script src="https://embed.twitch.tv/embed/v1.js"></script>
 </head>
 <body>
-  <!-- 頻道切換控制 -->
-  <div id="controls">
-    <label for="channelSelect">選擇頻道：</label>
-    <select id="channelSelect">
-      <option value="channel_one">頻道一</option>
-      <option value="channel_two">頻道二</option>
-      <option value="channel_three">頻道三</option>
-    </select>
-    <button id="reloadBtn">重新載入</button>
-  </div>
-
-  <!-- 影片與聊天並排顯示 -->
   <div id="container">
-    <div id="video"></div>
-    <div id="chat"></div>
+    <!-- 控制列 -->
+    <div id="controls">
+      頻道：
+      <select id="channelSelect"><option>載入中…</option></select>
+      <button id="toggleChatBtn">👁️ 收起聊天室</button>
+      <button id="themeBtn">🌙 啟用亮色主題</button>
+      <button id="reloadBtn">🔁 重新載入</button>
+    </div>
+
+    <!-- 主內容：直播 + 聊天室 -->
+    <div id="main-content">
+      <div id="video"></div>
+      <div id="chat-wrapper">
+        <div id="chat-tabs">Twitch 聊天室</div>
+        <div id="chat"></div>
+      </div>
+    </div>
   </div>
 
   <script>
-    // 你的網域（不含 https://）
-    const PARENT_DOMAIN = "miniapp-yourproject.vercel.app";
-
+    const PARENT = "miniapp-ten-nu.vercel.app"; // ⚠️ 改為你的 Vercel 網域
+    let currentChannel = "";
+    let themeMode = 'dark';
     let embedPlayer, embedChat;
 
-    // 初始化 TwitchEmbed
-    function initEmbed(channel) {
-      // 清空容器
+    // 假設 channel 清單來自你 CDN / GitHub Pages / json 資料
+    const CHANNEL_JSON_URL = "https://yourdomain.com/channels.json"; // 👉 改成實際連接
+
+    // 初始化播放器和聊天室
+    function initPlayer(channel) {
+      currentChannel = channel;
+
       document.getElementById("video").innerHTML = "";
       document.getElementById("chat").innerHTML = "";
 
-      // 直播播放器
       embedPlayer = new Twitch.Embed("video", {
         width: "100%",
         height: "100%",
-        channel,
-        parent: [PARENT_DOMAIN],
-        layout: "video-with-chat", // 可改 video／video-with-chat
+        channel: channel,
+        parent: [PARENT],
+        layout: "video",
         autoplay: true
       });
 
-      // 聊天室
-      embedChat = document.createElement("iframe");
-      embedChat.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT_DOMAIN}&darkpopout`;
-      embedChat.id = "chat";
-      embedChat.style.width = "100%";
-      embedChat.style.height = "100%";
-      embedChat.frameBorder = "0";
-      document.getElementById("chat").appendChild(embedChat);
+      const chatFrame = document.createElement("iframe");
+      chatFrame.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT}&darkpopout`;
+      chatFrame.style.width = "100%";
+      chatFrame.style.height = "100%";
+      chatFrame.frameborder = "0";
+
+      document.getElementById("chat").appendChild(chatFrame);
     }
 
-    // 切換頻道
+    // 載入頻道清單
+    async function loadChannelList() {
+      const sel = document.getElementById("channelSelect");
+      sel.innerHTML = "";
+
+      try {
+        const res = await fetch(CHANNEL_JSON_URL);
+        const list = await res.json();
+        list.forEach(({ id, name }) => {
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        });
+
+        // 載入第一個頻道
+        initPlayer(sel.value);
+      } catch (err) {
+        sel.innerHTML = "<option value='nasa'>⚠️ 載入失敗</option>";
+        initPlayer("nasa");
+      }
+    }
+
+    // 事件處理
     document.getElementById("reloadBtn").onclick = () => {
-      const channel = document.getElementById("channelSelect").value;
-      // 若已初始化，直接切換
-      if (embedPlayer) {
-        embedPlayer.getPlayer().setChannel(channel);
-        embedChat.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT_DOMAIN}&darkpopout`;
+      initPlayer(document.getElementById("channelSelect").value);
+    };
+
+    document.getElementById("toggleChatBtn").onclick = () => {
+      const chatWrap = document.getElementById("chat-wrapper");
+      if (chatWrap.classList.contains("hidden")) {
+        chatWrap.classList.remove("hidden");
+        document.getElementById("toggleChatBtn").innerText = "👁️ 收起聊天室";
       } else {
-        initEmbed(channel);
+        chatWrap.classList.add("hidden");
+        document.getElementById("toggleChatBtn").innerText = "👁️ 展開聊天室";
       }
     };
 
-    // 頁面首次載入預設第一個
-    window.addEventListener("DOMContentLoaded", () => {
-      initEmbed(document.getElementById("channelSelect").value);
-    });
+    document.getElementById("themeBtn").onclick = () => {
+      if (themeMode === 'dark') {
+        document.body.style.background = "#f8f8f8";
+        document.body.style.color = "#111";
+        themeMode = 'light';
+        document.getElementById("themeBtn").innerText = "🌙 啟用暗黑主題";
+      } else {
+        document.body.style.background = "#000";
+        document.body.style.color = "#fff";
+        themeMode = 'dark';
+        document.getElementById("themeBtn").innerText = "☀️ 啟用亮色主題";
+      }
+    };
+
+    // 初始化
+    window.addEventListener("DOMContentLoaded", loadChannelList);
   </script>
 </body>
 </html>
