@@ -1,20 +1,86 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Twitch 直播播放器</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>多頻道 Twitch 直播與聊天室</title>
   <style>
-    html, body { margin:0; padding:0; height:100vh; background:#000; }
-    iframe { border:none; width:100%; height:100vh; }
+    body,html { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:sans-serif; }
+    #controls { padding:10px; background:#111; display:flex; align-items:center; gap:10px; }
+    select, button { padding:8px; font-size:1em; }
+    #container { display:flex; height:calc(100% - 50px); }
+    #video, #chat { flex:1; border:none; }
+    #video { border-right:2px solid #222; }
   </style>
+  <!-- 載入 Twitch Embed JS -->
+  <script src="https://embed.twitch.tv/embed/v1.js"></script>
 </head>
 <body>
-  <iframe
-    src="https://player.twitch.tv/?channel=e7_69tg&parent=miniapp-mocha-kappa.vercel.app"
-    allowfullscreen
-    scrolling="no"
-    frameborder="0"
-  ></iframe>
+  <!-- 頻道切換控制 -->
+  <div id="controls">
+    <label for="channelSelect">選擇頻道：</label>
+    <select id="channelSelect">
+      <option value="channel_one">頻道一</option>
+      <option value="channel_two">頻道二</option>
+      <option value="channel_three">頻道三</option>
+    </select>
+    <button id="reloadBtn">重新載入</button>
+  </div>
+
+  <!-- 影片與聊天並排顯示 -->
+  <div id="container">
+    <div id="video"></div>
+    <div id="chat"></div>
+  </div>
+
+  <script>
+    // 你的網域（不含 https://）
+    const PARENT_DOMAIN = "miniapp-yourproject.vercel.app";
+
+    let embedPlayer, embedChat;
+
+    // 初始化 TwitchEmbed
+    function initEmbed(channel) {
+      // 清空容器
+      document.getElementById("video").innerHTML = "";
+      document.getElementById("chat").innerHTML = "";
+
+      // 直播播放器
+      embedPlayer = new Twitch.Embed("video", {
+        width: "100%",
+        height: "100%",
+        channel,
+        parent: [PARENT_DOMAIN],
+        layout: "video-with-chat", // 可改 video／video-with-chat
+        autoplay: true
+      });
+
+      // 聊天室
+      embedChat = document.createElement("iframe");
+      embedChat.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT_DOMAIN}&darkpopout`;
+      embedChat.id = "chat";
+      embedChat.style.width = "100%";
+      embedChat.style.height = "100%";
+      embedChat.frameBorder = "0";
+      document.getElementById("chat").appendChild(embedChat);
+    }
+
+    // 切換頻道
+    document.getElementById("reloadBtn").onclick = () => {
+      const channel = document.getElementById("channelSelect").value;
+      // 若已初始化，直接切換
+      if (embedPlayer) {
+        embedPlayer.getPlayer().setChannel(channel);
+        embedChat.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT_DOMAIN}&darkpopout`;
+      } else {
+        initEmbed(channel);
+      }
+    };
+
+    // 頁面首次載入預設第一個
+    window.addEventListener("DOMContentLoaded", () => {
+      initEmbed(document.getElementById("channelSelect").value);
+    });
+  </script>
 </body>
 </html>
