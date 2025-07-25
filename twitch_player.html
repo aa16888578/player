@@ -1,233 +1,104 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Twitch 直播播放器</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <title>Twitch 直播播放器</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    /* 全域 */
+    html,body{margin:0;padding:0;height:100vh;overflow:hidden;background:#000;color:#fff;font-family:sans-serif}
+    /* 彈性容器 */
+    #container{display:flex;flex-direction:column;height:100vh;width:100vw}
+    #video-section{flex:1 1 60%;min-height:50%;background:#000}
+    #chat-section{flex:1 1 40%;min-height:40%;background:#111;border-top:1px solid #333}
+    iframe{width:100%;height:100%;border:none}
 
-        body, html {
-            height: 100vh;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0f0f23;
-        }
-
-        .container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            width: 100vw;
-        }
-
-        .stream-container {
-            flex: 1;
-            width: 100%;
-            position: relative;
-            min-height: 50vh;
-        }
-
-        .stream-frame {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: #000;
-        }
-
-        .chat-container {
-            flex: 1;
-            width: 100%;
-            position: relative;
-            min-height: 50vh;
-        }
-
-        .chat-frame {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: #18181b;
-        }
-
-        /* 移動設備優化 */
-        @media (max-width: 768px) {
-            .stream-container {
-                flex: 1.2;
-            }
-
-            .chat-container {
-                flex: 0.8;
-            }
-        }
-
-        /* 防止螢幕保護程式啟動 */
-        .keep-awake {
-            position: absolute;
-            top: -9999px;
-            left: -9999px;
-            width: 1px;
-            height: 1px;
-            opacity: 0;
-        }
-    </style>
+    /* 行動版優先給影片空間 */
+    @media(max-width:768px){
+      #video-section{flex:1.3}
+      #chat-section{flex:0.7}
+    }
+    /* 禁選取 */
+    *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
+  </style>
+  <!-- 最新 Twitch Embed SDK -->
+  <script src="https://player.twitch.tv/js/embed/v1.js"></script>
 </head>
 <body>
-    <div class="container">
-        <!-- 直播視窗區域 -->
-        <div class="stream-container">
-            <iframe 
-                class="stream-frame"
-                src="https://player.twitch.tv/?channel=CHANNEL_NAME&parent=YOUR_DOMAIN&autoplay=true&controls=false"
-                allowfullscreen>
-            </iframe>
-        </div>
+  <div id="container">
+    <div id="video-section"><div id="video"></div></div>
+    <div id="chat-section"><div id="chat"></div></div>
+  </div>
 
-        <!-- 聊天室區域 -->
-        <div class="chat-container">
-            <iframe 
-                class="chat-frame"
-                src="https://www.twitch.tv/embed/CHANNEL_NAME/chat?parent=YOUR_DOMAIN&darkpopout">
-            </iframe>
-        </div>
-    </div>
+  <script>
+    /* ========= 使用者可配置參數 ========= */
+    const urlParams = new URLSearchParams(location.search);
+    const channel = urlParams.get("channel") || "nasa";               // 當前播放頻道
+    const PARENT   = location.hostname;                               // 自動偵測父網域
+    /* =================================== */
 
-    <!-- 保持喚醒的隱藏視頻元素 -->
-    <video class="keep-awake" muted loop autoplay>
-        <source src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAwW1kYXQAAAGzABAHAAABthADAowdbb9/AAAC6ZJqCGzRf8p9lAAACQpJREFUKJHt..." type="video/mp4">
-    </video>
+    let player;
 
-    <script>
-        // 背景播放核心功能 - 防止自動暫停
-        (function() {
-            'use strict';
+    /** 初始化播放器與聊天室 */
+    function init(channel){
+      document.getElementById("video").innerHTML = "";
+      document.getElementById("chat").innerHTML  = "";
 
-            // 重寫 Page Visibility API
-            const originalVisibilityState = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
-            const originalHidden = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
+      player = new Twitch.Embed("video",{
+        width:"100%",height:"100%",
+        channel,parent:[PARENT],
+        layout:"video",autoplay:true,muted:false
+      });
 
-            Object.defineProperty(document, 'visibilityState', {
-                get: function() {
-                    return 'visible';
-                },
-                configurable: true
-            });
+      const chatFrame = document.createElement("iframe");
+      chatFrame.src = `https://www.twitch.tv/embed/${channel}/chat?parent=${PARENT}&darkpopout`;
+      chatFrame.allow="autoplay; encrypted-media";
+      document.getElementById("chat").appendChild(chatFrame);
+    }
 
-            Object.defineProperty(document, 'hidden', {
-                get: function() {
-                    return false;
-                },
-                configurable: true
-            });
+    /** 阻止背景暫停 */
+    function preventAutoPause(){
+      try{
+        Object.defineProperty(document,"visibilityState",{value:"visible"});
+        Object.defineProperty(document,"hidden",{value:false});
+        const trap=e=>{e.stopImmediatePropagation();e.preventDefault();};
+        ["visibilitychange","pagehide","blur"].forEach(evt=>{
+          window.addEventListener(evt,trap,true);
+          document.addEventListener(evt,trap,true);
+        });
+      }catch(e){console.log("Page Visibility hack limited",e);}
+    }
 
-            // 阻止 visibilitychange 事件
-            const originalAddEventListener = document.addEventListener;
-            document.addEventListener = function(type, listener, options) {
-                if (type === 'visibilitychange') {
-                    return;
-                }
-                return originalAddEventListener.call(this, type, listener, options);
-            };
+    /** 定期 keep-alive */
+    function keepAlive(){
+      setInterval(()=>{
+        if(player && typeof player.getVolume==="function"){
+          const v=player.getVolume();
+          player.setVolume(v);
+        }
+      },30*1000);
+    }
 
-            // 阻止 blur 和 pagehide 事件
-            const originalWindowAddEventListener = window.addEventListener;
-            window.addEventListener = function(type, listener, options) {
-                if (type === 'blur' || type === 'pagehide' || type === 'beforeunload') {
-                    return;
-                }
-                return originalWindowAddEventListener.call(this, type, listener, options);
-            };
+    /** 行動裝置最佳化 */
+    function mobileFix(){
+      if(/Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent)){
+        let unlock;
+        const ctx = window.AudioContext||window.webkitAudioContext;
+        if(ctx){unlock=new ctx();}
+        const resume=()=>unlock&&unlock.state==="suspended"&&unlock.resume();
+        ["touchstart","click"].forEach(evt=>document.addEventListener(evt,resume,{once:true}));
+        // Wake Lock API（部分瀏覽器支援）
+        if("wakeLock" in navigator){navigator.wakeLock.request?.("screen").catch(()=>{});}
+      }
+    }
 
-            // 防止自動暫停的定期檢查
-            setInterval(function() {
-                // 觸發活動狀態
-                const activeEvent = new Event('mousemove');
-                document.dispatchEvent(activeEvent);
-
-                // 保持音頻上下文活躍
-                if (window.AudioContext || window.webkitAudioContext) {
-                    try {
-                        const context = new (window.AudioContext || window.webkitAudioContext)();
-                        if (context.state === 'suspended') {
-                            context.resume();
-                        }
-                    } catch (e) {}
-                }
-            }, 30000);
-
-            // Wake Lock API 支援（如果可用）
-            if ('wakeLock' in navigator) {
-                let wakeLock = null;
-
-                const requestWakeLock = async () => {
-                    try {
-                        wakeLock = await navigator.wakeLock.request('screen');
-                        console.log('螢幕保持喚醒已啟用');
-                    } catch (err) {
-                        console.log('無法啟用螢幕保持喚醒:', err);
-                    }
-                };
-
-                requestWakeLock();
-
-                // 在可見性變化時重新請求
-                document.addEventListener('visibilitychange', () => {
-                    if (wakeLock !== null && document.visibilityState === 'visible') {
-                        requestWakeLock();
-                    }
-                });
-            }
-
-            // 移動設備特殊處理
-            if (/Mobi|Android/i.test(navigator.userAgent)) {
-                // 防止觸摸時暫停
-                document.addEventListener('touchstart', function(e) {
-                    e.preventDefault();
-                }, { passive: false });
-
-                document.addEventListener('touchmove', function(e) {
-                    e.preventDefault();
-                }, { passive: false });
-            }
-
-            // 頁面載入完成後初始化
-            window.addEventListener('load', function() {
-                // 替換頻道名稱和域名
-                const streamFrame = document.querySelector('.stream-frame');
-                const chatFrame = document.querySelector('.chat-frame');
-
-                // 從 URL 參數獲取頻道名稱
-                const urlParams = new URLSearchParams(window.location.search);
-                const channel = urlParams.get('channel') || 'twitch';
-                const domain = window.location.hostname;
-
-                // 更新 iframe src
-                streamFrame.src = streamFrame.src.replace('CHANNEL_NAME', channel).replace('YOUR_DOMAIN', domain);
-                chatFrame.src = chatFrame.src.replace('CHANNEL_NAME', channel).replace('YOUR_DOMAIN', domain);
-
-                console.log('Twitch 播放器已優化 - 背景播放已啟用');
-            });
-
-            // 阻止右鍵菜單（可選）
-            document.addEventListener('contextmenu', function(e) {
-                e.preventDefault();
-            });
-
-            // 阻止特定鍵盤快捷鍵
-            document.addEventListener('keydown', function(e) {
-                // 阻止 F5 重新整理
-                if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-                    e.preventDefault();
-                }
-                // 阻止 Ctrl+Shift+I 開發者工具
-                if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-                    e.preventDefault();
-                }
-            });
-        })();
-    </script>
+    /* ---- 執行 ---- */
+    window.addEventListener("DOMContentLoaded",()=>{
+      init(channel);
+      preventAutoPause();
+      keepAlive();
+      mobileFix();
+    });
+  </script>
 </body>
 </html>
