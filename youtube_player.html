@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>YouTube 播放器 - 簡潔版</title>
 <style>
+  /* Reset與基本排版 */E html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YouTube 播放器 - 簡潔版</title>
+<style>
   /* Reset與基本排版 */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -31,6 +38,51 @@
     background: #000;
   }
 
+  /* 播放器控制區 */
+  #player-controls {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #player-wrapper:hover #player-controls {
+    opacity: 1;
+  }
+  .control-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+  }
+  .control-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  
+  /* 載入提示 */
+  #loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 1.2em;
+  }
+  
   /* 推薦影片區塊 */
   #recommend-area {
     background: #111;
@@ -39,6 +91,18 @@
     gap: 10px;
     overflow-x: auto;
     border-top: 1px solid #333;
+    scrollbar-width: thin;
+    scrollbar-color: #666 #111;
+  }
+  #recommend-area::-webkit-scrollbar {
+    height: 8px;
+  }
+  #recommend-area::-webkit-scrollbar-track {
+    background: #111;
+  }
+  #recommend-area::-webkit-scrollbar-thumb {
+    background-color: #666;
+    border-radius: 4px;
   }
 
   /* 推薦影片項目 */
@@ -70,26 +134,51 @@
 <body>
   <div id="container">
     <div id="player-wrapper">
-      <iframe id="ytplayer" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+      <iframe id="ytplayer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      <div id="loading-overlay">載入中...</div>
+      <div id="player-controls">
+        <button class="control-btn" id="prev-btn" title="上一個">⏮</button>
+        <button class="control-btn" id="replay-btn" title="重播">🔄</button>
+        <button class="control-btn" id="next-btn" title="下一個">⏭</button>
+      </div>
     </div>
     <div id="recommend-area">
       <!-- 影片推薦將由 JS 注入 -->
     </div>
+    <div id="error-message" style="display:none; background: #ff4444; color: white; padding: 10px; text-align: center;"></div>
   </div>
 
   <script>
-    // 讀取網址參數
+    // 讀取網址參數和本地存儲
     const params = new URLSearchParams(window.location.search);
     let currentVideoId = params.get("video_id");
+    let currentVideoIndex = 0;
 
+    // 從本地存儲讀取播放歷史
+    const playHistory = JSON.parse(localStorage.getItem('ytPlayerHistory') || '[]');
+    
     // 推薦影片列表：自行替換為你想推薦的影片ID和標題
     const recommendedVideos = [
-      { id: "QKb30DgwZ7Y", title: "熱門推薦影片1" },
-      { id: "60ItHLz5WEA", title: "熱門推薦影片2" },
-      { id: "G9j7OObRiRQ", title: "精選熱門影片3" },
-      { id: "oBbc_XWlgoE", title: "精彩音樂4" },
-      { id: "2Vv-BfVoq4g", title: "流行歌曲5" }
-    ];
+      { id: "QKb30DgwZ7Y", title: "熱門推薦影片1", views: 0 },
+      { id: "60ItHLz5WEA", title: "熱門推薦影片2", views: 0 },
+      { id: "G9j7OObRiRQ", title: "精選熱門影片3", views: 0 },
+      { id: "oBbc_XWlgoE", title: "精彩音樂4", views: 0 },
+      { id: "2Vv-BfVoq4g", title: "流行歌曲5", views: 0 }
+    ].map(video => {
+      // 從本地存儲讀取觀看次數
+      const historyItem = playHistory.find(h => h.id === video.id);
+      return { ...video, views: historyItem ? historyItem.views : 0 };
+    });
+
+    // 顯示錯誤訊息
+    function showError(message) {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+      }, 3000);
+    }
 
     // 影片ID有效性簡易驗證
     function validVideoId(id) {
@@ -97,24 +186,74 @@
     }
 
     // 設定播放器 src
-    function loadVideo(id) {
+    function loadVideo(id, updateUrl = true) {
       if (!validVideoId(id)) {
-        console.error("無效的影片ID: ", id);
+        showError("無效的影片ID");
         return;
       }
+
+      const loadingOverlay = document.getElementById('loading-overlay');
+      loadingOverlay.style.display = 'flex';
+
       const player = document.getElementById("ytplayer");
+      currentVideoId = id;
+      
+      // 更新 URL
+      if (updateUrl) {
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('video_id', id);
+        window.history.pushState({}, '', newUrl);
+      }
+
+      // 更新播放歷史
+      const historyIndex = playHistory.findIndex(h => h.id === id);
+      if (historyIndex > -1) {
+        playHistory[historyIndex].views++;
+        playHistory[historyIndex].lastPlayed = Date.now();
+      } else {
+        playHistory.push({ id, views: 1, lastPlayed: Date.now() });
+      }
+      localStorage.setItem('ytPlayerHistory', JSON.stringify(playHistory));
+
+      // 更新當前索引
+      currentVideoIndex = recommendedVideos.findIndex(v => v.id === id);
+      
       // 使用 autoplay=1，自動播放
       player.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&showinfo=0&iv_load_policy=3`;
-      currentVideoId = id;
+      
+      // 監聽 iframe 載入完成
+      player.onload = () => {
+        loadingOverlay.style.display = 'none';
+      };
+    }
+
+    // 播放控制功能
+    function playNext() {
+      const nextIndex = (currentVideoIndex + 1) % recommendedVideos.length;
+      loadVideo(recommendedVideos[nextIndex].id);
+    }
+
+    function playPrevious() {
+      const prevIndex = (currentVideoIndex - 1 + recommendedVideos.length) % recommendedVideos.length;
+      loadVideo(recommendedVideos[prevIndex].id);
+    }
+
+    function replayVideo() {
+      loadVideo(currentVideoId, false);
     }
 
     // 建立推薦影片區 DOM
     function buildRecommendation() {
       const area = document.getElementById("recommend-area");
-      recommendedVideos.forEach(video => {
+      area.innerHTML = ''; // 清空現有內容
+      
+      // 依據觀看次數排序推薦
+      const sortedVideos = [...recommendedVideos].sort((a, b) => b.views - a.views);
+      
+      sortedVideos.forEach(video => {
         const item = document.createElement("div");
         item.className = "rec-item";
-        item.title = video.title;
+        item.title = `${video.title} (觀看次數: ${video.views})`;
         item.innerHTML = `
         <img src="https://i.ytimg.com/vi/${video.id}/hqdefault.jpg" alt="${video.title}" />
         <div class="rec-title">${video.title}</div>
@@ -128,6 +267,35 @@
       });
     }
 
+    // 設置播放控制按鈕事件
+    document.getElementById('prev-btn').addEventListener('click', playPrevious);
+    document.getElementById('next-btn').addEventListener('click', playNext);
+    document.getElementById('replay-btn').addEventListener('click', replayVideo);
+
+    // 鍵盤控制
+    document.addEventListener('keydown', (e) => {
+      switch(e.key) {
+        case 'ArrowLeft':
+          playPrevious();
+          break;
+        case 'ArrowRight':
+          playNext();
+          break;
+        case 'r':
+        case 'R':
+          replayVideo();
+          break;
+      }
+    });
+
+    // 初始載入影片與推薦列表
+    if(validVideoId(currentVideoId)) {
+      loadVideo(currentVideoId);
+    } else {
+      // 若網址無video_id，則自動放第一支推薦影片
+      loadVideo(recommendedVideos[0].id);
+    }
+    buildRecommendation();
     // 初始載入影片與推薦列表
     if(validVideoId(currentVideoId)) {
       loadVideo(currentVideoId);
